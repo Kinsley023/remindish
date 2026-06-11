@@ -927,39 +927,71 @@ function registerEventListeners() {
     });
 
     // Start Camera Stream function
+    let isSimulatedCameraMode = false;
+
+    function startSimulatedCamera(reason) {
+        isSimulatedCameraMode = true;
+        showToast("ℹ️ " + reason + "，啟動「模擬鏡頭畫面」");
+        
+        DOM.scanOptionsPanel.classList.add('hidden');
+        DOM.cameraPreviewBox.classList.remove('hidden');
+        DOM.cameraStream.classList.add('hidden'); // Hide real video element
+        
+        // Remove any existing simulator placeholder
+        let placeholder = document.getElementById('simulated-camera-placeholder');
+        if (placeholder) placeholder.remove();
+        
+        // Create a beautiful placeholder with food scan graphic
+        placeholder = document.createElement('div');
+        placeholder.id = 'simulated-camera-placeholder';
+        placeholder.style.width = '100%';
+        placeholder.style.height = '300px';
+        placeholder.style.background = 'linear-gradient(135deg, #1e293b, #0f172a)';
+        placeholder.style.display = 'flex';
+        placeholder.style.flexDirection = 'column';
+        placeholder.style.alignItems = 'center';
+        placeholder.style.justifyContent = 'center';
+        placeholder.style.color = '#10b981';
+        placeholder.style.position = 'relative';
+        placeholder.style.overflow = 'hidden';
+        
+        placeholder.innerHTML = `
+            <div style="font-size: 3rem; margin-bottom: 10px; animation: pulse 2s infinite;"><i class="fa-solid fa-camera-rotate"></i></div>
+            <div style="font-size: 0.95rem; font-weight: bold; color: #ffffff;">模擬相機鏡頭畫面 (本地測試)</div>
+            <div style="font-size: 0.75rem; color: #94a3b8; margin-top: 5px;">請點擊下方「拍照」按鈕進行模擬辨識</div>
+            <div style="position: absolute; left: 0; right: 0; height: 2px; background: rgba(16,185,129,0.5); box-shadow: 0 0 10px #10b981; animation: scanMove 2s infinite linear;"></div>
+        `;
+        
+        // Insert placeholder before the controls
+        DOM.cameraPreviewBox.insertBefore(placeholder, DOM.cameraPreviewBox.firstChild);
+    }
+
     async function startCameraStream() {
         DOM.scanOptionsPanel.classList.add('hidden');
         DOM.cameraPreviewBox.classList.remove('hidden');
         DOM.imagePreviewBox.classList.add('hidden');
+        DOM.cameraStream.classList.remove('hidden');
+        
+        const placeholder = document.getElementById('simulated-camera-placeholder');
+        if (placeholder) placeholder.remove();
+        isSimulatedCameraMode = false;
         
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-            showToast("❌ 瀏覽器不支援或封鎖相機（請確認使用 http://localhost:8000 且開啟權限）");
-            DOM.cameraPreviewBox.classList.add('hidden');
-            DOM.scanOptionsPanel.classList.remove('hidden');
+            startSimulatedCamera("瀏覽器限制本地檔案 (file://) 使用相機");
             return;
         }
         
         try {
-            let stream;
-            try {
-                // Try back camera first (perfect for mobile scanning)
-                stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: 'environment' }
-                });
-            } catch (err) {
-                console.warn("Environment camera not found, falling back to default camera:", err);
-                // Fallback to any default webcam (for PC/Laptop)
-                stream = await navigator.mediaDevices.getUserMedia({
-                    video: true
-                });
-            }
+            // Use 'ideal' constraint so the browser automatically chooses the back camera on mobile
+            // and falls back to the front webcam on PC/laptops without throwing error.
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: { ideal: 'environment' } }
+            });
             STATE.cameraStreamObj = stream;
             DOM.cameraStream.srcObject = stream;
         } catch (error) {
             console.error("Camera access error: ", error);
-            showToast("❌ 相機開啟失敗：" + error.message);
-            DOM.cameraPreviewBox.classList.add('hidden');
-            DOM.scanOptionsPanel.classList.remove('hidden');
+            startSimulatedCamera("相機啟動失敗：" + error.name);
         }
     }
 
@@ -975,12 +1007,49 @@ function registerEventListeners() {
             STATE.cameraStreamObj = null;
         }
         DOM.cameraStream.srcObject = null;
+        DOM.cameraStream.classList.remove('hidden');
+        
+        const placeholder = document.getElementById('simulated-camera-placeholder');
+        if (placeholder) placeholder.remove();
+        
+        isSimulatedCameraMode = false;
+        
         DOM.cameraPreviewBox.classList.add('hidden');
         DOM.scanOptionsPanel.classList.remove('hidden');
     }
 
     // Capture photo from video stream
     DOM.capturePhotoBtn.addEventListener('click', () => {
+        if (isSimulatedCameraMode) {
+            // Generate simulated photo
+            const canvas = DOM.scanCanvas;
+            const context = canvas.getContext('2d');
+            canvas.width = 640;
+            canvas.height = 480;
+            
+            // Draw a mock camera shot with food items
+            context.fillStyle = '#1e293b';
+            context.fillRect(0, 0, canvas.width, canvas.height);
+            
+            context.fillStyle = '#ffffff';
+            context.font = 'bold 24px sans-serif';
+            context.textAlign = 'center';
+            context.fillText('📸 [模擬相機拍攝之食材畫面]', canvas.width/2, canvas.height/2 - 20);
+            
+            context.fillStyle = '#10b981';
+            context.font = '18px sans-serif';
+            context.fillText('(已準備好進行 AI 智慧分析)', canvas.width/2, canvas.height/2 + 20);
+            
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+            STATE.scanImageData = dataUrl;
+            DOM.scannedImagePreview.src = dataUrl;
+            
+            stopCameraStream();
+            DOM.cameraPreviewBox.classList.add('hidden');
+            DOM.imagePreviewBox.classList.remove('hidden');
+            return;
+        }
+
         if (!STATE.cameraStreamObj) return;
 
         const video = DOM.cameraStream;
