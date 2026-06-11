@@ -984,8 +984,13 @@ function registerEventListeners() {
         try {
             // Use 'ideal' constraint so the browser automatically chooses the back camera on mobile
             // and falls back to the front webcam on PC/laptops without throwing error.
+            // Request 720p HD resolution for optimal AI analysis quality.
             const stream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: { ideal: 'environment' } }
+                video: { 
+                    facingMode: { ideal: 'environment' },
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 }
+                }
             });
             STATE.cameraStreamObj = stream;
             DOM.cameraStream.srcObject = stream;
